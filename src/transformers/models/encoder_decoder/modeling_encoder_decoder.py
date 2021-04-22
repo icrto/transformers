@@ -23,7 +23,7 @@ from ...modeling_outputs import Seq2SeqLMOutput
 from ...modeling_utils import PreTrainedModel
 from ...utils import logging
 from .configuration_encoder_decoder import EncoderDecoderConfig
-
+from ..vit import ViTModel
 
 logger = logging.get_logger(__name__)
 
@@ -365,6 +365,8 @@ class EncoderDecoderModel(PreTrainedModel):
     def forward(
         self,
         input_ids=None,
+        pixel_values=None,
+        head_mask=None,
         attention_mask=None,
         decoder_input_ids=None,
         decoder_attention_mask=None,
@@ -415,15 +417,25 @@ class EncoderDecoderModel(PreTrainedModel):
         }
 
         if encoder_outputs is None:
-            encoder_outputs = self.encoder(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                inputs_embeds=inputs_embeds,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-                **kwargs_encoder,
-            )
+            if isinstance(self.encoder, ViTModel):
+                encoder_outputs = self.encoder(
+                    pixel_values=pixel_values,
+                    head_mask=head_mask,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    **kwargs_encoder,
+                )
+            else:
+                encoder_outputs = self.encoder(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    inputs_embeds=inputs_embeds,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    **kwargs_encoder,
+                )
 
         encoder_hidden_states = encoder_outputs[0]
 
