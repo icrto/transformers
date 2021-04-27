@@ -48,7 +48,6 @@ from .generation_stopping_criteria import (
 )
 from .utils import logging
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -641,6 +640,7 @@ class GenerationMixin:
     def generate(
         self,
         input_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.LongTensor] = None,
         max_length: Optional[int] = None,
         min_length: Optional[int] = None,
         do_sample: Optional[bool] = None,
@@ -857,7 +857,6 @@ class GenerationMixin:
             >>> outputs = model.generate(input_ids=input_ids, max_length=20, do_sample=True, bad_words_ids=bad_words_ids)
             >>> print("Generated:", tokenizer.decode(outputs[0], skip_special_tokens=True))
         """
-
         # set init values
         max_length = max_length if max_length is not None else self.config.max_length
         num_beams = num_beams if num_beams is not None else self.config.num_beams
@@ -883,15 +882,19 @@ class GenerationMixin:
         model_kwargs["output_attentions"] = output_attentions
         model_kwargs["output_hidden_states"] = output_hidden_states
 
-        if input_ids is None:
-            # init `input_ids` with bos_token_id
-            input_ids = self._prepare_input_ids_for_generation(bos_token_id, model_kwargs.get("encoder_outputs"))
+        # if pixel_values is defined means encoder is ViTModel
+        if self.config.is_encoder_decoder and pixel_values is not None:
+            input_ids = pixel_values
+        else:
+            if input_ids is None:
+                # init `input_ids` with bos_token_id
+                input_ids = self._prepare_input_ids_for_generation(bos_token_id, model_kwargs.get("encoder_outputs"))
 
-        if model_kwargs.get("attention_mask", None) is None:
-            # init `attention_mask` depending on `pad_token_id`
-            model_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
-                input_ids, pad_token_id, eos_token_id
-            )
+            if model_kwargs.get("attention_mask", None) is None:
+                # init `attention_mask` depending on `pad_token_id`
+                model_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
+                    input_ids, pad_token_id, eos_token_id
+                )
 
         # special case if pad_token_id is not defined
         if pad_token_id is None and eos_token_id is not None:
@@ -899,7 +902,7 @@ class GenerationMixin:
             pad_token_id = eos_token_id
 
         # Storing encoder_input_ids for logits_processor that could use them
-        encoder_input_ids = input_ids if self.config.is_encoder_decoder else None
+        encoder_input_ids = input_ids if self.config.is_encoder_decoder and pixel_values is None else None
 
         if self.config.is_encoder_decoder:
             # add encoder_outputs to model_kwargs
@@ -959,12 +962,12 @@ class GenerationMixin:
         )
 
         stopping_criteria = self._get_stopping_criteria(max_length=max_length, max_time=max_time)
-        if max_length is not None:
-            warnings.warn(
-                "`max_length` is deprecated in this function, use `stopping_criteria=StoppingCriteriaList(MaxLengthCriteria(max_length=max_length))` instead.",
-                UserWarning,
-            )
-            stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
+        # if max_length is not None:
+        #     warnings.warn(
+        #         "`max_length` is deprecated in this function, use `stopping_criteria=StoppingCriteriaList(MaxLengthCriteria(max_length=max_length))` instead.",
+        #         UserWarning,
+        #     )
+        #     stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
 
         if is_greedy_gen_mode:
             if num_return_sequences > 1:
