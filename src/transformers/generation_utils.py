@@ -886,7 +886,7 @@ class GenerationMixin:
         if self.config.is_encoder_decoder and pixel_values is not None:
             input_ids = pixel_values
         else:
-            if input_ids is None:
+            if input_ids is None and "inputs_embeds" not in model_kwargs:
                 # init `input_ids` with bos_token_id
                 input_ids = self._prepare_input_ids_for_generation(bos_token_id, model_kwargs.get("encoder_outputs"))
 
