@@ -23,6 +23,7 @@ from .integrations import is_deepspeed_zero3_enabled
 from .trainer import Trainer
 from .trainer_utils import PredictionOutput
 from .utils import logging
+from .models.vit import ViTModel
 
 
 if version.parse(torch.__version__) >= version.parse("1.6"):
@@ -164,14 +165,33 @@ class Seq2SeqTrainer(Trainer):
             "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
         }
 
-        generated_tokens = self.model.generate(
-            inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            **gen_kwargs,
-        )
+        # ViTModel receives pixel_values as input, not input_ids
+        if self.model.config.is_encoder_decoder and isinstance(self.model.get_encoder(), ViTModel):
+            if "decoder_input_ids" in inputs:
+                gen_kwargs["decoder_input_ids"] = inputs["decoder_input_ids"]
+
+            if "decoder_attention_mask" in inputs:
+                gen_kwargs["decoder_attention_mask"] = inputs["decoder_attention_mask"]
+
+            generated_tokens = self.model.generate(
+                pixel_values=inputs["pixel_values"],
+                **gen_kwargs,
+            )
+        else:
+            generated_tokens = self.model.generate(
+                inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                **gen_kwargs,
+            )
         # in case the batch is shorter than max length, the output should be padded
         if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
+
+        if self.model.config.is_encoder_decoder and isinstance(self.model.get_encoder(), ViTModel):
+            if "decoder_input_ids" not in inputs:
+                inputs["decoder_input_ids"] = self.model._prepare_decoder_input_ids_for_generation(
+                    inputs["pixel_values"]
+                )
 
         with torch.no_grad():
             if self.use_amp:
